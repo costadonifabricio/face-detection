@@ -1,55 +1,117 @@
-// Obtiene una referencia al elemento de video en el documento HTML con el id "video".
 const video = document.getElementById("video");
+const resultsContainer = document.getElementById("resultsContainer");
+let intervalId = null;
+let timeoutId = null;
 
-// Carga el modelo de detección de rostros llamado tinyFaceDetector desde el directorio "/models" utilizando FaceAPI.js.
-// Una vez que el modelo se ha cargado correctamente, se llama a la función startVideo.
-Promise.all([faceapi.nets.tinyFaceDetector.loadFromUri("/models")]).then(startVideo);
-
-// Función para iniciar la reproducción del video de la cámara del usuario y comenzar la detección facial.
+// Función para iniciar la transmisión de video desde la cámara del usuario
 function startVideo() {
-  // Obtiene acceso a la cámara del usuario.
-  navigator.getUserMedia(
-    { video: {} },
-    // Callback de éxito: asigna el stream de video al elemento de video y comienza la detección facial cuando el metadato del video está cargado.
-    (stream) => {
+  navigator.mediaDevices
+    .getUserMedia({ video: true })
+    .then((stream) => {
       video.srcObject = stream;
       video.addEventListener("loadedmetadata", () => {
         video.play();
-        startFaceDetection(); // Inicia la detección facial.
+        startFaceDetection();
       });
-    },
-    // Callback de error: muestra el error en la consola.
-    (err) => console.error(err)
-  );
+    })
+    .catch((err) => {
+      console.error("Error al acceder a la cámara:", err);
+    });
 }
 
-// Función para iniciar la detección facial.
-function startFaceDetection() {
-  // Crea un lienzo HTML utilizando la biblioteca FaceAPI y lo añade al cuerpo del documento.
-  const canvas = faceapi.createCanvasFromMedia(video);
-  document.body.append(canvas);
+// Función para iniciar la detección de rostros y expresiones
+async function startFaceDetection() {
+  try {
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
+      faceapi.nets.faceExpressionNet.loadFromUri("/models"),
+    ]);
 
-  // Obtiene el tamaño de visualización del video.
-  const displaySize = { width: video.videoWidth, height: video.videoHeight }; 
+    const displaySize = { width: video.videoWidth, height: video.videoHeight };
 
-  // Ajusta las dimensiones del lienzo para que coincidan con el tamaño de visualización del video.
-  faceapi.matchDimensions(canvas, displaySize);
+    intervalId = setInterval(async () => {
+      const detections = await faceapi
+        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceExpressions();
 
-  // Configura un intervalo para realizar la detección facial en el video a intervalos regulares.
-  setInterval(async () => {
-    // Detecta todos los rostros en el video utilizando el modelo tinyFaceDetector.
-    const detections = await faceapi.detectAllFaces(
-      video,
-      new faceapi.TinyFaceDetectorOptions()
-    );
+      // Limpiar el contenedor de resultados
+      resultsContainer.innerHTML = "";
 
-    // Redimensiona las detecciones de acuerdo al tamaño de visualización del video.
-    const resizedDetections = faceapi.resizeResults(detections, displaySize);
+      detections.forEach((detection, index) => {
+        const box = detection.detection.box;
 
-    // Borra el contenido previo del lienzo.
-    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+        // Obtener la emoción dominante
+        const emotion = getDominantEmotion(detection.expressions);
 
-    // Dibuja las detecciones de rostros en el lienzo.
-    faceapi.draw.drawDetections(canvas, resizedDetections);
-  }, 100); // Realiza la detección facial cada 100 milisegundos.
+        // Crear un contenedor para cada rostro detectado
+        const faceContainer = document.createElement("div");
+        faceContainer.classList.add("face-container");
+        faceContainer.style.border = "2px solid #fff"; // Establecer borde blanco de 2px
+        faceContainer.style.margin = "10px"; // Espacio entre los contenedores
+
+        // Crear un canvas con ID único para cada rostro detectado
+        const faceCanvas = document.createElement("canvas");
+        const canvasId = `faceCanvas_${index}`; // ID único para el canvas
+        faceCanvas.id = canvasId;
+        faceCanvas.width = box.width;
+        faceCanvas.height = box.height;
+        const ctx = faceCanvas.getContext("2d");
+        ctx.drawImage(
+          video,
+          box.x,
+          box.y,
+          box.width,
+          box.height,
+          0,
+          0,
+          box.width,
+          box.height
+        );
+
+        // Mostrar el canvas en el contenedor
+        faceContainer.appendChild(faceCanvas);
+
+        // Mostrar la cara capturada en un elemento <img>
+        const capturedFaceImg = document.createElement("img");
+        capturedFaceImg.src = faceCanvas.toDataURL("image/png");
+        faceContainer.appendChild(capturedFaceImg);
+
+        // Mostrar la emoción detectada
+        const emotionText = document.createElement("h2");
+        emotionText.textContent = "Emoción: " + emotion;
+        faceContainer.appendChild(emotionText);
+
+        // Agregar el contenedor al contenedor de resultados
+        resultsContainer.appendChild(faceContainer);
+      });
+    }, 100); // Intervalo ajustable según sea necesario
+  } catch (error) {
+    console.error("Error al cargar el modelo:", error);
+  }
 }
+
+// Función para obtener la emoción dominante
+function getDominantEmotion(expressions) {
+  let dominantEmotion = null;
+  let maxProbability = 0;
+
+  // Iterar sobre todas las expresiones y encontrar la de mayor probabilidad
+  Object.keys(expressions).forEach((emotion) => {
+    if (expressions[emotion] > maxProbability) {
+      maxProbability = expressions[emotion];
+      dominantEmotion = emotion;
+    }
+  });
+
+  return dominantEmotion;
+}
+
+// Iniciar el video y la detección de rostros cuando se cargue la página
+Promise.all([
+  faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
+  faceapi.nets.faceExpressionNet.loadFromUri("/models"),
+])
+  .then(startVideo)
+  .catch((err) => {
+    console.error("Error al cargar el modelo:", err);
+  });

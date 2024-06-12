@@ -10,13 +10,15 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <div id="container">
-      <h1>Face Detection App</h1>
-      <p>
-        Esta aplicación utiliza tecnología de detección facial para identificar
-        rostros en tiempo real.
-      </p>
-      <video id="video" autoplay muted></video>
-    </div>
+    <h1>Face Detection App</h1>
+    <h2>
+      Esta aplicación utiliza la biblioteca face-api.js para detectar rostros en
+      una transmisión de video y capturar la cara.
+    </h2>
+
+    <video id="video" width="720" height="560" autoplay muted></video>
+    <h2>Rostros detectados:</h2>
+    <div id="resultsContainer"></div>
+    <canvas id="faceCanvas" style="display: none"></canvas>
   </body>
 </html>
